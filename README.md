@@ -2,6 +2,8 @@
 
 ## Setup
 
+![Terminal](./docs/images/screenshot.png)
+
 Run the one-time setup:
 
 ```sh
