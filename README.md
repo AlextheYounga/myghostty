@@ -13,11 +13,10 @@ Run the one-time setup:
 Manual steps if you prefer:
 
 ```sh
-./link_ghostty_config.sh
-source /path/to/this/repo/shell_settings.sh
+./setup.sh
 ```
 
 ## Notes
 
 - The prompt shows the current path, git branch, and async git diff stats.
-- If the box-drawing glyphs don’t render, swap `╭`/`╰` in `shell_settings.sh` for ASCII.
+- If the box-drawing glyphs don’t render, swap `╭`/`╰` in `config/shell_settings.sh` for ASCII.

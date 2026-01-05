@@ -4,16 +4,26 @@ set -euo pipefail
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-config_linker="${script_dir}/scripts/link_ghostty_config.sh"
-shell_settings="${script_dir}/scripts/shell_settings.sh"
+shell_settings="${HOME}/.config/ghostty/shell_settings"
 shell_configs_var='SHELL_CONFIGS_FILE'
 shell_configs_value="${shell_settings}"
 
-if [[ ! -x "$config_linker" ]]; then
-  chmod +x "$config_linker"
-fi
+copy_ghostty_files() {
+  local source_config="${script_dir}/config/config"
+  local source_shell_settings="${script_dir}/config/shell_settings.sh"
+  local target_dir="${HOME}/.config/ghostty"
+  local target_config="${target_dir}/config"
+  local target_shell_settings="${target_dir}/shell_settings"
 
-"$config_linker"
+  mkdir -p "${target_dir}"
+  cp "${source_config}" "${target_config}"
+  cp "${source_shell_settings}" "${target_shell_settings}"
+
+  printf "Copied %s -> %s\n" "${source_config}" "${target_config}"
+  printf "Copied %s -> %s\n" "${source_shell_settings}" "${target_shell_settings}"
+}
+
+copy_ghostty_files
 
 add_source_line() {
   local rc_file="$1"
@@ -51,7 +61,7 @@ add_source_line() {
 
 case "${SHELL##*/}" in
   bash)
-    add_source_line "${HOME}/.bashrc"
+    add_source_line "${HOME}/.bash_profile"
     ;;
   zsh)
     add_source_line "${HOME}/.zshrc"
