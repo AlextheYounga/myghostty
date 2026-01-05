@@ -95,4 +95,4 @@ _ghostty_prompt_command() {
 
 PROMPT_COMMAND="_ghostty_prompt_command"
 
-PS1="\[\e[36m\]\w\[\e[0m\]\[\e[92m\]\$(git_branch)\[\e[0m\]\$(git_prompt_read_cache)\n$ "
+PS1="\[\e[36m\]╭\[\e[0m\] \[\e[36m\]\w\[\e[0m\]\[\e[92m\]\$(git_branch)\[\e[0m\]\$(git_prompt_read_cache)\n\[\e[36m\]╰\[\e[0m\] $ "
