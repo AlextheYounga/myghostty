@@ -14,8 +14,20 @@ git_branch() {
   printf " (%s)" "$branch"
 }
 
-git_diff_stats() {
-  git rev-parse --is-inside-work-tree >/dev/null 2>&1 || return
+git_prompt_cache_dir="${XDG_CACHE_HOME:-$HOME/.cache}/ghostty"
+git_prompt_cache_file="${git_prompt_cache_dir}/git_prompt_cache"
+git_prompt_lock_dir="${git_prompt_cache_dir}/git_prompt_lock"
+git_prompt_cache_ttl_seconds=1
+
+git_prompt_stat_mtime() {
+  if stat -f "%m" "$1" >/dev/null 2>&1; then
+    stat -f "%m" "$1"
+  else
+    stat -c "%Y" "$1"
+  fi
+}
+
+git_prompt_build_stats() {
   local added=0
   local deleted=0
   local a d _path
@@ -34,4 +46,53 @@ git_diff_stats() {
   fi
 }
 
-PS1="\[\e[36m\]\w\[\e[0m\]\[\e[92m\]\$(git_branch)\[\e[0m\]\$(git_diff_stats)\n$ "
+git_prompt_update_async() {
+  local now last
+  now=$(date +%s)
+
+  mkdir -p "$git_prompt_cache_dir"
+
+  if [[ -f "$git_prompt_cache_file" ]]; then
+    last=$(git_prompt_stat_mtime "$git_prompt_cache_file")
+    if (( now - last < git_prompt_cache_ttl_seconds )); then
+      return
+    fi
+  fi
+
+  if mkdir "$git_prompt_lock_dir" 2>/dev/null; then
+    (
+      trap 'rmdir "$git_prompt_lock_dir" >/dev/null 2>&1' EXIT
+      tmp_file="${git_prompt_cache_file}.tmp.$$"
+
+      if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+        git_prompt_build_stats >"$tmp_file"
+      else
+        : >"$tmp_file"
+      fi
+      mv "$tmp_file" "$git_prompt_cache_file"
+    ) >/dev/null 2>&1 &
+    if [[ -o monitor ]]; then
+      disown >/dev/null 2>&1 || true
+    fi
+  fi
+}
+
+git_prompt_read_cache() {
+  [[ -f "$git_prompt_cache_file" ]] || return
+  cat "$git_prompt_cache_file"
+}
+
+if [[ -z "${GHOSTTY_ORIGINAL_PROMPT_COMMAND+x}" ]]; then
+  GHOSTTY_ORIGINAL_PROMPT_COMMAND="${PROMPT_COMMAND-}"
+fi
+
+_ghostty_prompt_command() {
+  git_prompt_update_async
+  if [[ -n "${GHOSTTY_ORIGINAL_PROMPT_COMMAND}" ]]; then
+    eval "${GHOSTTY_ORIGINAL_PROMPT_COMMAND}"
+  fi
+}
+
+PROMPT_COMMAND="_ghostty_prompt_command"
+
+PS1="\[\e[36m\]\w\[\e[0m\]\[\e[92m\]\$(git_branch)\[\e[0m\]\$(git_prompt_read_cache)\n$ "
