@@ -8,8 +8,22 @@ shell_settings="${HOME}/.config/ghostty/shell_settings"
 shell_configs_var='SHELL_CONFIGS_FILE'
 shell_configs_value="${shell_settings}"
 
+# Parse command line arguments
+os_type=""
+for arg in "$@"; do
+  if [[ "$arg" == --os=* ]]; then
+    os_type="${arg#*=}"
+    break
+  fi
+done
+
+if [[ "$os_type" != "mac" && "$os_type" != "linux" ]]; then
+  printf "Error: --os argument is required. Use --os=mac or --os=linux\n" >&2
+  exit 1
+fi
+
 copy_ghostty_files() {
-  local source_config="${script_dir}/config/config"
+  local source_config="${script_dir}/config/config_${os_type}"
   local source_shell_settings="${script_dir}/config/shell_settings.sh"
   local target_dir="${HOME}/.config/ghostty"
   local target_config="${target_dir}/config"
@@ -61,7 +75,12 @@ add_source_line() {
 
 case "${SHELL##*/}" in
   bash)
-    add_source_line "${HOME}/.bash_profile"
+  	profile="${HOME}/.bashrc"
+    if [[ "$os_type" == "mac" ]]; then
+      profile="${HOME}/.bash_profile"
+    fi
+
+    add_source_line "$profile"
     ;;
   zsh)
     add_source_line "${HOME}/.zshrc"
