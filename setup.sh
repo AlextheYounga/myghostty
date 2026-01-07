@@ -2,74 +2,183 @@
 
 set -euo pipefail
 
-script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+GHOSTTY_DIR="${HOME}/.config/ghostty"
+SHELL_SETTINGS_PATH="${GHOSTTY_DIR}/shell_settings"
 
-shell_settings="${HOME}/.config/ghostty/shell_settings"
-shell_configs_var='SHELL_CONFIGS_FILE'
-shell_configs_value="${shell_settings}"
-
-copy_ghostty_files() {
-  local source_config="${script_dir}/config/config"
-  local source_shell_settings="${script_dir}/config/shell_settings.sh"
-  local target_dir="${HOME}/.config/ghostty"
-  local target_config="${target_dir}/config"
-  local target_shell_settings="${target_dir}/shell_settings"
-
-  mkdir -p "${target_dir}"
-  cp "${source_config}" "${target_config}"
-  cp "${source_shell_settings}" "${target_shell_settings}"
-
-  printf "Copied %s -> %s\n" "${source_config}" "${target_config}"
-  printf "Copied %s -> %s\n" "${source_shell_settings}" "${target_shell_settings}"
+log() {
+  printf "%s\n" "$*"
 }
 
-copy_ghostty_files
+has_command() {
+  command -v "$1" >/dev/null 2>&1
+}
+
+copy_ghostty_files() {
+  local source_config="${SCRIPT_DIR}/config/config"
+  local source_shell_settings="${SCRIPT_DIR}/config/shell_settings.sh"
+  local target_config="${GHOSTTY_DIR}/config"
+
+  mkdir -p "${GHOSTTY_DIR}"
+  cp "${source_config}" "${target_config}"
+  cp "${source_shell_settings}" "${SHELL_SETTINGS_PATH}"
+
+  log "Copied ${source_config} -> ${target_config}"
+  log "Copied ${source_shell_settings} -> ${SHELL_SETTINGS_PATH}"
+}
+
+completion_already_installed() {
+  if has_command brew; then
+    local brew_prefix
+    brew_prefix="$(brew --prefix)"
+    [[ -f "${brew_prefix}/opt/bash-completion@2/etc/profile.d/bash_completion.sh" ]]
+    return
+  fi
+
+  [[ -f "/etc/bash_completion" || -f "/etc/profile.d/bash_completion.sh" || -f "/usr/share/bash-completion/bash_completion" ]]
+}
+
+completion_package_name() {
+  if has_command brew; then
+    printf "bash-completion@2"
+  else
+    printf "bash-completion"
+  fi
+}
+
+package_for_tool() {
+  local tool="$1"
+  case "$tool" in
+    delta)
+      printf "git-delta"
+      ;;
+    *)
+      printf "%s" "$tool"
+      ;;
+  esac
+}
+
+missing_packages() {
+  local missing=()
+  local tool
+  for tool in fzf zoxide bat eza delta; do
+    if [[ "$tool" == "bat" ]]; then
+      if has_command bat || has_command batcat; then
+        continue
+      fi
+      missing+=("$(package_for_tool "$tool")")
+      continue
+    fi
+
+    if ! has_command "$tool"; then
+      missing+=("$(package_for_tool "$tool")")
+    fi
+  done
+
+  if ! completion_already_installed; then
+    missing+=("$(completion_package_name)")
+  fi
+
+  printf "%s\n" "${missing[@]}"
+}
+
+install_with_brew() {
+  brew install "$@"
+}
+
+install_with_apt() {
+  sudo apt-get update
+  if printf '%s\n' "$@" | grep -qx "bat"; then
+    if ! sudo apt-get install -y bat; then
+      sudo apt-get install -y batcat
+    fi
+  fi
+  for pkg in "$@"; do
+    [[ "$pkg" == "bat" ]] && continue
+    sudo apt-get install -y "$pkg"
+  done
+}
+
+install_with_dnf() {
+  sudo dnf install -y "$@"
+}
+
+install_with_pacman() {
+  sudo pacman -S --noconfirm "$@"
+}
+
+install_dependencies() {
+  local missing=()
+  while IFS= read -r pkg; do
+    [[ -n "$pkg" ]] && missing+=("$pkg")
+  done < <(missing_packages)
+  if (( ${#missing[@]} == 0 )); then
+    log "All optional tools already installed."
+    return
+  fi
+
+  log "Installing optional tools: ${missing[*]}"
+
+  if has_command brew; then
+    install_with_brew "${missing[@]}"
+    return
+  fi
+
+  if has_command apt-get; then
+    install_with_apt "${missing[@]}"
+    return
+  fi
+
+  if has_command dnf; then
+    install_with_dnf "${missing[@]}"
+    return
+  fi
+
+  if has_command pacman; then
+    install_with_pacman "${missing[@]}"
+    return
+  fi
+
+  log "No supported package manager found. Install manually: ${missing[*]}"
+}
 
 add_source_line() {
   local rc_file="$1"
-  local line="source \"${shell_settings}\""
-  local export_line="export ${shell_configs_var}=\"${shell_configs_value}\""
+  local source_line="source \"${SHELL_SETTINGS_PATH}\""
 
   if [[ ! -f "$rc_file" ]]; then
     : >"$rc_file"
   fi
 
-  if grep -Eq "^export ${shell_configs_var}=" "$rc_file"; then
-    if ! grep -Fqx "$export_line" "$rc_file"; then
-      tmp_file="${rc_file}.tmp.$$"
-      awk -v key="${shell_configs_var}" -v line="${export_line}" '
-        $0 ~ "^export " key "=" { print line; next }
-        { print }
-      ' "$rc_file" >"$tmp_file"
-      mv "$tmp_file" "$rc_file"
-      printf "Updated prompt export in %s\n" "$rc_file"
-    else
-      printf "Prompt export already present in %s\n" "$rc_file"
-    fi
+  if ! grep -Fqx "$source_line" "$rc_file"; then
+    printf "%s\n" "$source_line" >>"$rc_file"
+    log "Added prompt source to ${rc_file}"
   else
-    printf "\n# Ghostty prompt settings\n%s\n" "$export_line" >>"$rc_file"
-    printf "Added prompt export to %s\n" "$rc_file"
-  fi
-
-  if ! grep -Fqx "$line" "$rc_file"; then
-    printf "%s\n" "$line" >>"$rc_file"
-    printf "Added prompt source to %s\n" "$rc_file"
-  else
-    printf "Prompt source already present in %s\n" "$rc_file"
+    log "Prompt source already present in ${rc_file}"
   fi
 }
 
-case "${SHELL##*/}" in
-  bash)
-    add_source_line "${HOME}/.bash_profile"
-    ;;
-  zsh)
-    add_source_line "${HOME}/.zshrc"
-    ;;
-  *)
-    printf "Unknown shell: %s\n" "${SHELL##*/}"
-    printf "Add this line to your shell rc file:\n%s\n" "source \"${shell_settings}\""
-    ;;
-esac
+configure_shell() {
+  case "${SHELL##*/}" in
+    bash)
+      add_source_line "${HOME}/.bash_profile"
+      ;;
+    zsh)
+      add_source_line "${HOME}/.zshrc"
+      ;;
+    *)
+      log "Unknown shell: ${SHELL##*/}"
+      log "Add this line to your shell rc file:"
+      log "source \"${SHELL_SETTINGS_PATH}\""
+      ;;
+  esac
+}
 
-printf "Setup complete. Restart your shell or run: source \"%s\"\n" "$shell_settings"
+main() {
+  copy_ghostty_files
+  install_dependencies
+  configure_shell
+  log "Setup complete. Restart your shell or run: source \"${SHELL_SETTINGS_PATH}\""
+}
+
+main "$@"
