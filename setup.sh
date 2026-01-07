@@ -5,6 +5,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 GHOSTTY_DIR="${HOME}/.config/ghostty"
 SHELL_SETTINGS_PATH="${GHOSTTY_DIR}/shell_settings"
+OS_TYPE=""
 
 log() {
   printf "%s\n" "$*"
@@ -14,8 +15,27 @@ has_command() {
   command -v "$1" >/dev/null 2>&1
 }
 
+parse_os_type() {
+  local arg
+  for arg in "$@"; do
+    case "$arg" in
+      --os=mac)
+        OS_TYPE="mac"
+        ;;
+      --os=linux)
+        OS_TYPE="linux"
+        ;;
+    esac
+  done
+
+  if [[ "$OS_TYPE" != "mac" && "$OS_TYPE" != "linux" ]]; then
+    log "Error: --os argument is required. Use --os=mac or --os=linux"
+    exit 1
+  fi
+}
+
 copy_ghostty_files() {
-  local source_config="${SCRIPT_DIR}/config/config"
+  local source_config="${SCRIPT_DIR}/config/config_${OS_TYPE}"
   local source_shell_settings="${SCRIPT_DIR}/config/shell_settings.sh"
   local target_config="${GHOSTTY_DIR}/config"
 
@@ -161,7 +181,11 @@ add_source_line() {
 configure_shell() {
   case "${SHELL##*/}" in
     bash)
-      add_source_line "${HOME}/.bash_profile"
+      if [[ "$OS_TYPE" == "mac" ]]; then
+        add_source_line "${HOME}/.bash_profile"
+      else
+        add_source_line "${HOME}/.bashrc"
+      fi
       ;;
     zsh)
       add_source_line "${HOME}/.zshrc"
@@ -175,6 +199,7 @@ configure_shell() {
 }
 
 main() {
+  parse_os_type "$@"
   copy_ghostty_files
   install_dependencies
   configure_shell
